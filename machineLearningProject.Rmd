@@ -1,0 +1,83 @@
+Practical Machine Learning Project 
+========================================================
+
+Executive Summary
+--
+This report examines model selection and performance to predict the quality of barbell
+lifts based on data from accelerometers on the belt, forearm, arm, and dumbell of 6 
+participants.
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+Data Processing
+-
+First the training data is loaded using the read.csv function. The testing data set consists
+of 19,622 observations having 160 features. Of the 160 features, the "classe" feature represents the quality variable to predict. Also the first 7 features contain information
+not useful in modeling such as user name and timing information. Additionally, many of the
+columns contain only NA values or a very high percentage of NA values. These columns
+are removed for this analysis.
+
+As a result, the final training data set has 52 continuous predictors and 1 response variable (classe).
+
+```{r data_processing, cache=TRUE, warning=FALSE }
+library("caret")
+library("randomForest")
+dtrain <- read.csv("pml-training.csv",na.strings = c("NA","#DIV/0!"))
+dtrain1 <- dtrain[,8:160]
+dtrain1$classe = factor(dtrain1$classe)
+dtrain2<-dtrain1[,colSums(is.na(dtrain1)) == 0]
+```
+
+Model Selection
+-
+
+After exploration of various model types including linear discriminent analysis (lda), a final model type of random type was selected for this case.
+
+Model Cross Validation
+-
+
+Next we use the rfcv function of the randomForest package to perform model cross validation.
+This function determines out of sample error rates using k-fold cross validation on a 
+sequentially reduced number of predictors (ordered by importance).
+
+In this case, k-fold cross validation with k=5 is performed first using all 52 predictors,
+then incrementally reducing the number of employed predictors by 10% (ranked by importance). In order to perform this processing in a timely fashion, the "ntree" argument is set to 100. 
+
+Following is a plot of "number of predictors" verses "out of sample error" showing decreasing
+out of sample error as the number of predictors increases. 
+
+
+```{r cross_validation, cache=TRUE, fig.width=6, fig.height=5}
+cv1 <- rfcv(dtrain2[,-53],dtrain2$classe, cv.fold=5, step=.90, ntree=100)
+with(cv1, plot(n.var, error.cv, log="x", type="o", lwd=2))
+```
+
+This analysis shows a minimum out of sample error where `r cv1$n.var[which.min(cv1$error.cv)][[1]]` predictors are employed having out of sample error `r cv1$error.cv[which.min(cv1$error.cv)][[1]]`.
+
+Final Model
+--
+
+Random Forest is selected as a final model as it is appropriate for the activity (classe) response variable in this case, that has more than 2 classes
+
+In order to test the final model prior to submission, the training data set is subsetted using 75% of the data for actual training purposes and 25% for a quick test prior to submission.
+
+```{r final_model, cache=TRUE }
+set.seed(125)
+inTrain = createDataPartition(dtrain2$classe, p = 0.75,list=FALSE)
+training = dtrain2[ inTrain,]
+testing = dtrain2[-inTrain,]
+modfit <- randomForest(classe ~ .,data=training)
+cm <- confusionMatrix(testing$classe,predict(modfit,testing[,-53]))
+```
+Using the 25% remaining sample, the model gives overall accuracy of `r cm$overall[1]`.
+
+
+Predictions
+--
+Finally, we use the final model to predict the activities for the given testing data for submission.
+
+```{r predictions, cache=TRUE }
+dtest <- read.csv("pml-testing.csv",na.strings = c("NA","#DIV/0!"))
+predictions <- predict(modfit, newdata = dtest)
+predictions
+```
